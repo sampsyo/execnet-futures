@@ -5,17 +5,29 @@ import textwrap
 
 def _worker(channel):
     """Pure function for running tasks on a host."""
+    import traceback
     while not channel.isclosed():
         ident, source, call_name, args, kwargs = channel.receive()
 
-        # Copied out of gateway_base's playbook.
-        #FIXME: try/except/finally
         co = compile(source+'\n', '', 'exec')
         loc = {}
         exec co in loc
-        res = loc[call_name](*args, **kwargs)
+        try:
+            res = loc[call_name](*args, **kwargs)
+        except BaseException:
+            res = traceback.format_exc()
+            failed = True
+        else:
+            failed = False
 
-        channel.send((ident, res))
+        channel.send((failed, ident, res))
+
+class RemoteException(Exception):
+    def __init__(self, text):
+        self.text = text.strip()
+
+    def __str__(self):
+        return self.text
 
 class GatewayExecutor(futbase.Executor):
     def __init__(self, group):
@@ -35,9 +47,13 @@ class GatewayExecutor(futbase.Executor):
 
     def _message(self, msg):
         # Future finished.
-        ident, res = msg
+        failed, ident, res = msg
         fut, _, _, _ = self._running_tasks[ident]
-        fut.set_result(res)
+
+        if failed:
+            fut.set_exception(RemoteException(res))
+        else:
+            fut.set_result(res)
 
         # Gateway no longer busy.
         gw = self._busy_gateways.pop(ident)
@@ -52,6 +68,7 @@ class GatewayExecutor(futbase.Executor):
         if self._idle_gateways and self._pending_tasks:
             ident = self._pending_tasks.iterkeys().next()
             fut, fn, args, kwargs = self._pending_tasks.pop(ident)
+
 
             if not fut.set_running_or_notify_cancel():
                 return
@@ -90,6 +107,7 @@ class GatewayExecutor(futbase.Executor):
 if __name__ == '__main__':
     group = execnet.Group(['popen'] * 2)
     def square(n):
+        raise ValueError()
         return n * n
     with GatewayExecutor(group) as executor:
         futures = [executor.submit(square, n) for n in range(5)]
