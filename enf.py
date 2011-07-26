@@ -20,7 +20,10 @@ def _worker(channel):
         else:
             failed = False
 
-        channel.send((failed, ident, res))
+        try:
+            channel.send((failed, ident, res))
+        except BaseException:
+            channel.send((True, ident, 'unserializable result'))
 
 class RemoteException(Exception):
     def __init__(self, text):
@@ -107,7 +110,6 @@ class GatewayExecutor(futbase.Executor):
 if __name__ == '__main__':
     group = execnet.Group(['popen'] * 2)
     def square(n):
-        raise ValueError()
         return n * n
     with GatewayExecutor(group) as executor:
         futures = [executor.submit(square, n) for n in range(5)]
