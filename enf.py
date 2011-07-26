@@ -105,24 +105,3 @@ class GatewayExecutor(futbase.Executor):
             chan.close()
         self._group.terminate()
         # FIXME wait=False?
-
-# Smoke test.
-if __name__ == '__main__':
-    group = execnet.Group(['popen'] * 2)
-    def square(n):
-        return n * n
-    with GatewayExecutor(group) as executor:
-        futures = [executor.submit(square, n) for n in range(5)]
-        for future in futures:
-            print future.result()
-
-    print
-
-    group = execnet.Group(['popen'] * 3)
-    def pid():
-        import os
-        return os.getpid()
-    with GatewayExecutor(group) as executor:
-        futures = [executor.submit(pid) for i in range(10)]
-        for future in futures:
-            print future.result()
