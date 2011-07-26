@@ -2,6 +2,8 @@ import enf
 import execnet
 import sys
 import textwrap
+import subprocess
+import re
 
 # Shared "worker" functions.
 def square(n):
@@ -9,6 +11,21 @@ def square(n):
 def pid():
     import os
     return os.getpid()
+def hostinfo():
+    import subprocess
+    return subprocess.check_output('hostname; uname -a', shell=True)
+
+# Magic for Condor stuff.
+def idle_condor_hosts():
+    status = subprocess.check_output('condor_status', shell=True)
+    hostnames = re.findall(r'@(\S*)', status)
+    hostnames = set(hostnames) # Uniquify.
+    return hostnames
+def condor_group(num=None):
+    gwspecs = ['ssh=%s' % name for name in idle_condor_hosts()]
+    if num:
+        gwspecs = gwspecs[:num]
+    return execnet.Group(gwspecs)
 
 def example_1():
     """
@@ -41,6 +58,14 @@ def example_3():
     with enf.GatewayExecutor(group) as executor:
         for res in executor.map(square, range(10)):
             print res
+
+def example_4():
+    """Distribute tasks across the cluster!"""
+    group = condor_group(4)
+    with enf.GatewayExecutor(group) as executor:
+        futures = [executor.submit(hostinfo) for i in range(5)]
+        for future in futures:
+            print future.result()
 
 if __name__ == '__main__':
     for arg in sys.argv[1:]:
